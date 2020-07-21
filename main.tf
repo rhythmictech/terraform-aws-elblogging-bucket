@@ -1,27 +1,56 @@
 data "aws_caller_identity" "current" {
 }
 
+data "aws_region" "current" {
+}
+
 locals {
-  account_id = data.aws_caller_identity.current.account_id
+  account_id  = data.aws_caller_identity.current.account_id
+  bucket_name = var.bucket_name == null ? "${local.account_id}-${local.region}-${var.bucket_suffix}" : var.bucket_name
+  region      = data.aws_region.current.name
 
   # A map with the region is used for clarity, but only the account ID is needed
   elb_account_ids = [
     for key in keys(var.elb_logging_regions) : "arn:aws:iam::${var.elb_logging_regions[key]}:root"
   ]
 
+  logging = var.s3_access_logging_bucket == null ? [] : [{
+    bucket = var.s3_access_logging_bucket
+    prefix = var.s3_access_logging_prefix
+  }]
 }
 
 resource "aws_s3_bucket" "this" {
-  bucket = "${local.account_id}-${var.region}-${var.bucket_suffix}"
+  bucket = "${local.account_id}-${local.region}-${var.bucket_suffix}"
   acl    = "log-delivery-write"
   tags   = var.tags
 
-  lifecycle_rule {
-    id      = "expire"
-    enabled = true
+  dynamic "lifecycle_rule" {
+    iterator = rule
+    for_each = var.lifecycle_rules
 
-    noncurrent_version_expiration {
-      days = 90
+    content {
+      id      = rule.value.id
+      enabled = rule.value.enabled
+      prefix  = lookup(rule.value, "prefix", null)
+
+      expiration {
+        days = rule.value.expiration
+      }
+
+      noncurrent_version_expiration {
+        days = rule.value.noncurrent_version_expiration
+      }
+    }
+  }
+
+  dynamic "logging" {
+    iterator = log
+    for_each = local.logging
+
+    content {
+      target_bucket = log.value.bucket
+      target_prefix = lookup(log.value, "prefix", null)
     }
   }
 
@@ -34,9 +63,15 @@ resource "aws_s3_bucket" "this" {
   }
 
   versioning {
-    enabled = true
+    enabled    = var.versioning_enabled
+    mfa_delete = var.mfa_delete_enabled
   }
 
+  # this cannot be configured programatically via TF, so just ignore it if someone
+  # turned it on administratively.
+  lifecycle {
+    ignore_changes = [versioning[0].mfa_delete]
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "this" {
@@ -45,8 +80,6 @@ resource "aws_s3_bucket_public_access_block" "this" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-
-  depends_on = [aws_s3_bucket.this]
 }
 
 data "aws_iam_policy_document" "this" {
