@@ -63,8 +63,7 @@ resource "aws_s3_bucket" "this" {
   }
 
   versioning {
-    enabled    = var.versioning_enabled
-    mfa_delete = var.mfa_delete_enabled
+    enabled = var.versioning_enabled
   }
 
   # this cannot be configured programatically via TF, so just ignore it if someone

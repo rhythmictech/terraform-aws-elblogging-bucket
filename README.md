@@ -22,7 +22,7 @@ module "elblogging-bucket" {
 
 | Name | Version |
 |------|---------|
-| terraform | >= 0.12.19 |
+| terraform | >= 0.12.20 |
 
 ## Providers
 
