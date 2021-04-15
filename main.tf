@@ -4,15 +4,13 @@ data "aws_caller_identity" "current" {
 data "aws_region" "current" {
 }
 
+data "aws_elb_service_account" "principal" {
+}
+
 locals {
   account_id  = data.aws_caller_identity.current.account_id
   bucket_name = var.bucket_name == null ? "${local.account_id}-${local.region}-${var.bucket_suffix}" : var.bucket_name
   region      = data.aws_region.current.name
-
-  # A map with the region is used for clarity, but only the account ID is needed
-  elb_account_ids = [
-    for key in keys(var.elb_logging_regions) : "arn:aws:iam::${var.elb_logging_regions[key]}:root"
-  ]
 
   logging = var.s3_access_logging_bucket == null ? [] : [{
     bucket = var.s3_access_logging_bucket
@@ -20,8 +18,9 @@ locals {
   }]
 }
 
+#tfsec:ignore:AWS002
 resource "aws_s3_bucket" "this" {
-  bucket = "${local.account_id}-${local.region}-${var.bucket_suffix}"
+  bucket = local.bucket_name
   acl    = "log-delivery-write"
   tags   = var.tags
 
@@ -83,16 +82,45 @@ resource "aws_s3_bucket_public_access_block" "this" {
 
 data "aws_iam_policy_document" "this" {
   statement {
-    effect  = "Allow"
-    actions = ["s3:PutObject"]
+    sid       = "AllowElbLogging"
+    actions   = ["s3:PutObject"]
+    effect    = "Allow"
+    resources = ["arn:aws:s3:::${aws_s3_bucket.this.bucket}/*"]
 
     principals {
       type        = "AWS"
-      identifiers = local.elb_account_ids
+      identifiers = data.aws_elb_service_account.principal.arn
     }
+  }
 
+  statement {
+    sid       = "AllowNlbLogging"
+    actions   = ["s3:PutObject"]
+    effect    = "Allow"
     resources = ["arn:aws:s3:::${aws_s3_bucket.this.bucket}/*"]
 
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "AllowNlbLoggingAclAccess"
+    actions   = ["s3:GetBucketAcl"]
+    effect    = "Allow"
+    resources = [aws_s3_bucket.this.arn]
+
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
   }
 }
 
