@@ -89,7 +89,7 @@ data "aws_iam_policy_document" "this" {
 
     principals {
       type        = "AWS"
-      identifiers = data.aws_elb_service_account.principal.arn
+      identifiers = [data.aws_elb_service_account.principal.arn]
     }
   }
 
