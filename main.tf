@@ -1,6 +1,9 @@
 data "aws_caller_identity" "current" {
 }
 
+data "aws_partition" "current" {
+}
+
 data "aws_region" "current" {
 }
 
@@ -10,6 +13,7 @@ data "aws_elb_service_account" "principal" {
 locals {
   account_id  = data.aws_caller_identity.current.account_id
   bucket_name = var.bucket_name == null ? "${local.account_id}-${local.region}-${var.bucket_suffix}" : var.bucket_name
+  partition   = data.aws_partition.current.partition
   region      = data.aws_region.current.name
 
   logging = var.s3_access_logging_bucket == null ? [] : [{
@@ -85,7 +89,7 @@ data "aws_iam_policy_document" "this" {
     sid       = "AllowElbLogging"
     actions   = ["s3:PutObject"]
     effect    = "Allow"
-    resources = ["arn:aws:s3:::${aws_s3_bucket.this.bucket}/*"]
+    resources = ["arn:${local.partition}:s3:::${aws_s3_bucket.this.bucket}/*"]
 
     principals {
       type        = "AWS"
@@ -97,7 +101,7 @@ data "aws_iam_policy_document" "this" {
     sid       = "AllowNlbLogging"
     actions   = ["s3:PutObject"]
     effect    = "Allow"
-    resources = ["arn:aws:s3:::${aws_s3_bucket.this.bucket}/*"]
+    resources = ["arn:${local.partition}:s3:::${aws_s3_bucket.this.bucket}/*"]
 
     condition {
       test     = "StringEquals"
