@@ -11,6 +11,12 @@ variable "bucket_suffix" {
   type        = string
 }
 
+variable "create_athena_query" {
+  default     = true
+  description = "Create an Athena table for querying ALB logs. Uses the aws cli"
+  type        = bool
+}
+
 variable "lifecycle_rules" {
   default     = []
   description = "lifecycle rules to apply to the bucket"
