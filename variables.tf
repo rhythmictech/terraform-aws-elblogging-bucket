@@ -17,6 +17,12 @@ variable "create_athena_query" {
   type        = bool
 }
 
+variable "kms_key_id" {
+  default     = null
+  description = "KMS key to encrypt bucket with."
+  type        = string
+}
+
 variable "lifecycle_rules" {
   default     = []
   description = "lifecycle rules to apply to the bucket"
