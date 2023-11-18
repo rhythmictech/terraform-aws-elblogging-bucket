@@ -12,13 +12,6 @@ resource "aws_s3_bucket" "athena_results" {
   tags          = var.tags
 }
 
-resource "aws_s3_bucket_acl" "athena_results" {
-  count = var.create_athena_query ? 1 : 0
-
-  bucket = aws_s3_bucket.athena_results[0].id
-  acl    = "private"
-}
-
 #tfsec:ignore:aws-s3-encryption-customer-key
 resource "aws_s3_bucket_server_side_encryption_configuration" "athena_results" {
   count = var.create_athena_query ? 1 : 0
