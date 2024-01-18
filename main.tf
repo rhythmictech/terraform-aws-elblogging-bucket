@@ -22,7 +22,6 @@ locals {
 
 resource "aws_s3_bucket" "this" {
   bucket = "${local.account_id}-${local.region}-${var.bucket_suffix}"
-  acl    = "log-delivery-write"
   tags   = var.tags
 
   dynamic "lifecycle_rule" {
