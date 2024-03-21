@@ -14,6 +14,8 @@ repos:
         alias: terraform_tflint_nocreds
         name: terraform_tflint_nocreds
       - id: terraform_trivy
+        args:
+        - --args=--skip-dirs="**/.terraform,examples/*"
       - id: terraform_providers_lock
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0

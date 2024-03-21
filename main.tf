@@ -15,17 +15,11 @@ locals {
   bucket_name = var.bucket_name == null ? "${local.account_id}-${local.region}-${var.bucket_suffix}" : var.bucket_name
   partition   = data.aws_partition.current.partition
   region      = data.aws_region.current.name
-
-  logging = var.s3_access_logging_bucket == null ? [] : [{
-    bucket = var.s3_access_logging_bucket
-    prefix = var.s3_access_logging_prefix
-  }]
 }
 
-#tfsec:ignore:AWS002
+#trivy:ignore:avd-aws-0089
 resource "aws_s3_bucket" "this" {
   bucket = local.bucket_name
-  acl    = "log-delivery-write"
   tags   = var.tags
 
   dynamic "lifecycle_rule" {
@@ -46,34 +40,27 @@ resource "aws_s3_bucket" "this" {
       }
     }
   }
+}
 
-  dynamic "logging" {
-    iterator = log
-    for_each = local.logging
-
-    content {
-      target_bucket = log.value.bucket
-      target_prefix = lookup(log.value, "prefix", null)
-    }
+resource "aws_s3_bucket_versioning" "this" {
+  bucket = aws_s3_bucket.this.id
+  versioning_configuration {
+    status = var.versioning_enabled ? "Enabled" : "Suspended"
   }
 
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        kms_master_key_id = var.kms_key_id
-        sse_algorithm     = var.kms_key_id != null ? "aws:kms" : "AES256"
-      }
-    }
-  }
-
-  versioning {
-    enabled = var.versioning_enabled
-  }
-
-  # this cannot be configured programatically via TF, so just ignore it if someone
-  # turned it on administratively.
   lifecycle {
-    ignore_changes = [versioning[0].mfa_delete]
+    ignore_changes = [versioning_configuration[0].mfa_delete]
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      kms_master_key_id = var.kms_key_id
+      sse_algorithm     = var.kms_key_id != null ? "aws:kms" : "AES256"
+    }
   }
 }
 
@@ -133,7 +120,13 @@ resource "aws_s3_bucket_policy" "this" {
   bucket = aws_s3_bucket.this.id
   policy = data.aws_iam_policy_document.this.json
 
-  # this isn't really dependent on the public access block but there can be
-  # race conditions when creating bucket policies simultaneously
   depends_on = [aws_s3_bucket_public_access_block.this]
+}
+
+resource "aws_s3_bucket_logging" "this" {
+  count = var.s3_access_logging_bucket == null ? 0 : 1
+
+  bucket        = aws_s3_bucket.this.id
+  target_bucket = var.s3_access_logging_bucket
+  target_prefix = var.s3_access_logging_prefix
 }
