@@ -3,7 +3,7 @@
 # stores results from athena queries
 ##########################################
 
-#tfsec:ignore:aws-s3-enable-bucket-logging
+#trivy:ignore:avd-aws-0089
 resource "aws_s3_bucket" "athena_results" {
   count = var.create_athena_query ? 1 : 0
 
@@ -22,16 +22,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "athena_results" {
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }
-  }
-}
-
-resource "aws_s3_bucket_ownership_controls" "athena_results" {
-  count = var.create_athena_query ? 1 : 0
-
-  bucket = aws_s3_bucket.athena_results[0].id
-
-  rule {
-    object_ownership = "BucketOwnerEnforced"
   }
 }
 

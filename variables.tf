@@ -12,7 +12,7 @@ variable "bucket_suffix" {
 }
 
 variable "create_athena_query" {
-  default     = true
+  default     = false
   description = "Create an Athena table for querying ALB logs. Uses the aws cli"
   type        = bool
 }

@@ -3,6 +3,10 @@
 # minimal IAM policy to allow querying of elb logs with athena
 ##########################################
 
+locals {
+  athena_bucket_arn    = try(aws_s3_bucket.athena_results[0].arn, "arn:${local.partition}:s3:::bucket")
+  athena_workgroup_arn = try(aws_athena_workgroup.this[0].arn, "arn:${local.partition}:athena:${local.region}:${local.account_id}:workgroup/workgroup")
+}
 #tfsec:ignore:aws-iam-no-policy-wildcards
 data "aws_iam_policy_document" "athena" {
   statement {
@@ -24,7 +28,7 @@ data "aws_iam_policy_document" "athena" {
 
   statement {
     sid       = "AllowRunWorkgroup"
-    resources = [aws_athena_workgroup.this[0].arn]
+    resources = [local.athena_workgroup_arn]
     actions = [
       "athena:UpdatePreparedStatement",
       "athena:StopQueryExecution",
@@ -55,7 +59,7 @@ data "aws_iam_policy_document" "athena" {
       "s3:ListBucket"
     ]
     resources = [
-      aws_s3_bucket.athena_results[0].arn,
+      local.athena_bucket_arn,
       aws_s3_bucket.this.arn,
     ]
     condition {
@@ -82,7 +86,7 @@ data "aws_iam_policy_document" "athena" {
 
   statement {
     sid       = "AllowWriteResults"
-    resources = ["${aws_s3_bucket.athena_results[0].arn}/*"]
+    resources = ["${local.athena_bucket_arn}/*"]
     actions = [
       "s3:GetObject",
       "s3:PutObject"
@@ -98,7 +102,7 @@ data "aws_iam_policy_document" "athena" {
 resource "aws_iam_policy" "athena" {
   count = var.create_athena_query ? 1 : 0
 
-  name        = "athena_query_elb_logs"
+  name_prefix = "athena_query_elb_logs"
   path        = "/"
   description = "Allows the user to query ELB logs with Athena"
   policy      = data.aws_iam_policy_document.athena.json
