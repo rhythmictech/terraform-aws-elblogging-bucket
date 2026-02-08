@@ -53,13 +53,13 @@ resource "aws_s3_bucket_versioning" "this" {
   }
 }
 
+#trivy:ignore:avd-aws-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
   rule {
     apply_server_side_encryption_by_default {
-      kms_master_key_id = var.kms_key_id
-      sse_algorithm     = var.kms_key_id != null ? "aws:kms" : "AES256"
+      sse_algorithm = "AES256"
     }
   }
 }
@@ -72,46 +72,107 @@ resource "aws_s3_bucket_public_access_block" "this" {
   restrict_public_buckets = true
 }
 
-data "aws_iam_policy_document" "this" {
-  statement {
-    sid       = "AllowElbLogging"
-    actions   = ["s3:PutObject"]
-    effect    = "Allow"
-    resources = ["arn:${local.partition}:s3:::${aws_s3_bucket.this.bucket}/*"]
+locals {
+  elb_source_accounts = length(var.source_organizations) > 0 ? ["*"] : (length(var.source_accounts) > 0 ? var.source_accounts : [local.account_id])
+  alb_source_arns     = [for a in local.elb_source_accounts : "arn:aws:elasticloadbalancing:*:${a}:loadbalancer/*"]
+  nlb_source_arns     = [for a in local.elb_source_accounts : "arn:aws:logs:*:${a}:*"]
+}
 
-    principals {
-      type        = "AWS"
-      identifiers = [data.aws_elb_service_account.principal.arn]
+data "aws_iam_policy_document" "this" {
+
+  dynamic "statement" {
+    for_each = var.use_legacy_elb_policy ? [true] : []
+    content {
+      sid       = "AllowElbLogging"
+      actions   = ["s3:PutObject"]
+      effect    = "Allow"
+      resources = ["arn:${local.partition}:s3:::${aws_s3_bucket.this.bucket}/*"]
+
+      principals {
+        type        = "AWS"
+        identifiers = [data.aws_elb_service_account.principal.arn]
+      }
     }
   }
 
+  dynamic "statement" {
+    for_each = var.use_legacy_elb_policy ? [] : [true]
+    content {
+      sid       = "AllowAlbLogging"
+      actions   = ["s3:PutObject"]
+      effect    = "Allow"
+      resources = ["arn:${local.partition}:s3:::${aws_s3_bucket.this.bucket}/*"]
+      principals {
+        type        = "Service"
+        identifiers = ["logdelivery.elasticloadbalancing.amazonaws.com"]
+      }
+      condition {
+        test     = "ArnLike"
+        variable = "aws:SourceArn"
+        values   = local.alb_source_arns
+      }
+      dynamic "condition" {
+        for_each = length(var.source_organizations) > 0 ? [true] : []
+        content {
+          test     = "StringEquals"
+          variable = "aws:SourceOrgId"
+          values   = var.source_organizations
+        }
+      }
+    }
+  }
   statement {
     sid       = "AllowNlbLogging"
     actions   = ["s3:PutObject"]
     effect    = "Allow"
     resources = ["arn:${local.partition}:s3:::${aws_s3_bucket.this.bucket}/*"]
-
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
     condition {
       test     = "StringEquals"
       variable = "s3:x-amz-acl"
       values   = ["bucket-owner-full-control"]
     }
-
-    principals {
-      type        = "Service"
-      identifiers = ["delivery.logs.amazonaws.com"]
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = local.nlb_source_arns
     }
+    dynamic "condition" {
+      for_each = length(var.source_organizations) > 0 ? [true] : []
+      content {
+        test     = "StringEquals"
+        variable = "aws:ResourceOrgID"
+        values   = var.source_organizations
+      }
+    }
+
   }
 
   statement {
     sid       = "AllowNlbLoggingAclAccess"
-    actions   = ["s3:GetBucketAcl"]
+    actions   = ["s3:GetBucketAcl", "s3:ListBucket"]
     effect    = "Allow"
     resources = [aws_s3_bucket.this.arn]
 
     principals {
       type        = "Service"
       identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = local.nlb_source_arns
+    }
+    dynamic "condition" {
+      for_each = length(var.source_organizations) > 0 ? [true] : []
+      content {
+        test     = "StringEquals"
+        variable = "aws:ResourceOrgID"
+        values   = var.source_organizations
+      }
     }
   }
 }
