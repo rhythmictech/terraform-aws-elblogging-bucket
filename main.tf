@@ -21,25 +21,37 @@ locals {
 resource "aws_s3_bucket" "this" {
   bucket = local.bucket_name
   tags   = var.tags
+}
 
-  dynamic "lifecycle_rule" {
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  bucket                                 = aws_s3_bucket.this.id
+  transition_default_minimum_object_size = "varies_by_storage_class"
+
+  dynamic "rule" {
     iterator = rule
     for_each = var.lifecycle_rules
 
     content {
-      id      = rule.value.id
-      enabled = rule.value.enabled
-      prefix  = lookup(rule.value, "prefix", null)
+      id     = rule.value.id
+      status = rule.value.enabled ? "Enabled" : "Disabled"
+
+      dynamic "filter" {
+        for_each = contains(keys(rule.value), "prefix") ? [true] : []
+        content {
+          prefix = rule.value.prefix
+        }
+      }
 
       expiration {
         days = rule.value.expiration
       }
 
       noncurrent_version_expiration {
-        days = rule.value.noncurrent_version_expiration
+        noncurrent_days = rule.value.noncurrent_version_expiration
       }
     }
   }
+
 }
 
 resource "aws_s3_bucket_versioning" "this" {
@@ -73,15 +85,10 @@ resource "aws_s3_bucket_public_access_block" "this" {
 }
 
 locals {
-  elb_source_accounts = (
-    length(var.source_organizations) > 0 ? ["*"] : (
-      contains(var.source_accounts, "self")
-      ? sort(concat(setsubtract(var.source_accounts, ["self"]), [local.account_id]))
-      : sort(var.source_accounts)
-    )
-  )
-  alb_source_arns = [for a in local.elb_source_accounts : "arn:aws:elasticloadbalancing:*:${a}:loadbalancer/*"]
-  nlb_source_arns = [for a in local.elb_source_accounts : "arn:aws:logs:*:${a}:*"]
+  real_source_accounts = [for a in var.source_accounts : a == "self" ? local.account_id : a]
+  elb_source_accounts  = length(var.source_organizations) > 0 ? ["*"] : sort(distinct(local.real_source_accounts))
+  alb_source_arns      = [for a in local.elb_source_accounts : "arn:aws:elasticloadbalancing:*:${a}:loadbalancer/*"]
+  nlb_source_arns      = [for a in local.elb_source_accounts : "arn:aws:logs:*:${a}:*"]
 }
 
 data "aws_iam_policy_document" "this" {
