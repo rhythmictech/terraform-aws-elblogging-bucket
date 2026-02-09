@@ -75,7 +75,7 @@ resource "aws_s3_bucket_public_access_block" "this" {
 locals {
   elb_source_accounts = (
     length(var.source_organizations) > 0 ? ["*"] : (
-      contains(var.source_accounts, "self") > 0
+      contains(var.source_accounts, "self")
       ? sort(concat(setsubtract(var.source_accounts, ["self"]), [local.account_id]))
       : sort(var.source_accounts)
     )
