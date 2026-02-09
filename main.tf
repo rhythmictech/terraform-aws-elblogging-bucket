@@ -17,7 +17,7 @@ locals {
   region      = data.aws_region.current.name
 }
 
-#trivy:ignore:avd-aws-0089
+#trivy:ignore:AVD-AWS-0089
 resource "aws_s3_bucket" "this" {
   bucket = local.bucket_name
   tags   = var.tags
@@ -53,7 +53,7 @@ resource "aws_s3_bucket_versioning" "this" {
   }
 }
 
-#trivy:ignore:avd-aws-0132
+#trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
@@ -73,9 +73,15 @@ resource "aws_s3_bucket_public_access_block" "this" {
 }
 
 locals {
-  elb_source_accounts = length(var.source_organizations) > 0 ? ["*"] : (length(var.source_accounts) > 0 ? var.source_accounts : [local.account_id])
-  alb_source_arns     = [for a in local.elb_source_accounts : "arn:aws:elasticloadbalancing:*:${a}:loadbalancer/*"]
-  nlb_source_arns     = [for a in local.elb_source_accounts : "arn:aws:logs:*:${a}:*"]
+  elb_source_accounts = (
+    length(var.source_organizations) > 0 ? ["*"] : (
+      contains(var.source_accounts, "self") > 0
+      ? sort(concat(setsubtract(var.source_accounts, ["self"]), [local.account_id]))
+      : sort(var.source_accounts)
+    )
+  )
+  alb_source_arns = [for a in local.elb_source_accounts : "arn:aws:elasticloadbalancing:*:${a}:loadbalancer/*"]
+  nlb_source_arns = [for a in local.elb_source_accounts : "arn:aws:logs:*:${a}:*"]
 }
 
 data "aws_iam_policy_document" "this" {
@@ -106,10 +112,13 @@ data "aws_iam_policy_document" "this" {
         type        = "Service"
         identifiers = ["logdelivery.elasticloadbalancing.amazonaws.com"]
       }
-      condition {
-        test     = "ArnLike"
-        variable = "aws:SourceArn"
-        values   = local.alb_source_arns
+      dynamic "condition" {
+        for_each = length(local.alb_source_arns) > 0 ? [true] : []
+        content {
+          test     = "ArnLike"
+          variable = "aws:SourceArn"
+          values   = local.alb_source_arns
+        }
       }
       dynamic "condition" {
         for_each = length(var.source_organizations) > 0 ? [true] : []
@@ -135,10 +144,13 @@ data "aws_iam_policy_document" "this" {
       variable = "s3:x-amz-acl"
       values   = ["bucket-owner-full-control"]
     }
-    condition {
-      test     = "ArnLike"
-      variable = "aws:SourceArn"
-      values   = local.nlb_source_arns
+    dynamic "condition" {
+      for_each = length(local.nlb_source_arns) > 0 ? [true] : []
+      content {
+        test     = "ArnLike"
+        variable = "aws:SourceArn"
+        values   = local.nlb_source_arns
+      }
     }
     dynamic "condition" {
       for_each = length(var.source_organizations) > 0 ? [true] : []
@@ -161,10 +173,13 @@ data "aws_iam_policy_document" "this" {
       type        = "Service"
       identifiers = ["delivery.logs.amazonaws.com"]
     }
-    condition {
-      test     = "ArnLike"
-      variable = "aws:SourceArn"
-      values   = local.nlb_source_arns
+    dynamic "condition" {
+      for_each = length(local.nlb_source_arns) > 0 ? [true] : []
+      content {
+        test     = "ArnLike"
+        variable = "aws:SourceArn"
+        values   = local.nlb_source_arns
+      }
     }
     dynamic "condition" {
       for_each = length(var.source_organizations) > 0 ? [true] : []

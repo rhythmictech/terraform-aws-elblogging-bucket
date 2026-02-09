@@ -44,8 +44,8 @@ variable "s3_access_logging_prefix" {
 }
 
 variable "source_accounts" {
-  default     = []
-  description = "List of AWS account IDs to restrict log delivery to. Defaults to caller account."
+  default     = ["self"]
+  description = "List of AWS account IDs to restrict log delivery to. Defaults to caller account. Set to an empty list to allow any account."
   type        = list(string)
 }
 
