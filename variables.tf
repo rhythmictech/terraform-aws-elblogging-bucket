@@ -17,12 +17,6 @@ variable "create_athena_query" {
   type        = bool
 }
 
-variable "kms_key_id" {
-  default     = null
-  description = "KMS key to encrypt bucket with."
-  type        = string
-}
-
 variable "lifecycle_rules" {
   default     = []
   description = "lifecycle rules to apply to the bucket"
@@ -49,10 +43,28 @@ variable "s3_access_logging_prefix" {
   type        = string
 }
 
+variable "source_accounts" {
+  default     = ["self"]
+  description = "List of AWS account IDs to restrict log delivery to. Defaults to caller account. Set to an empty list to allow any account."
+  type        = list(string)
+}
+
+variable "source_organizations" {
+  default     = []
+  description = "List of AWS Organization IDs to restrict log delivery to. Overrides `source_accounts`."
+  type        = list(string)
+}
+
 variable "tags" {
   default     = {}
   description = "Tags to add to supported resources"
   type        = map(string)
+}
+
+variable "use_legacy_elb_policy" {
+  default     = false
+  description = "Use the legacy ELB policy statement from pre-2022."
+  type        = bool
 }
 
 variable "versioning_enabled" {
